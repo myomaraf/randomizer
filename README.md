@@ -140,6 +140,13 @@ Routes:
   - formula + steps
   - paginated ticket list (100/page)
 
+Lookup behavior:
+
+- Typing an ID into the `/raffles` search box opens that raffle.
+- Query-string auto-open is supported:
+  - `GET /raffles?rafflee=raffle_123`
+- If the raffle does not exist (or another lookup error occurs), the app redirects back to `/raffles` and shows a toast error message instead of returning a raw `404` page.
+
 ## Algorithm and audit
 
 Selection algorithm:

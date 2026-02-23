@@ -80,9 +80,56 @@
             text-decoration: none;
             font-weight: 600;
         }
+
+        .toast {
+            position: fixed;
+            top: 18px;
+            right: 18px;
+            max-width: 360px;
+            border-radius: 10px;
+            padding: 12px 14px;
+            border: 1px solid transparent;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
+            opacity: 0;
+            transform: translateY(-8px);
+            transition: opacity 0.22s ease, transform 0.22s ease;
+            z-index: 1000;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.error {
+            background: #fff1f2;
+            border-color: #fecdd3;
+            color: #9f1239;
+        }
     </style>
 </head>
 <body>
+@if (session('toast_error'))
+    <div id="toast-error" class="toast error" role="status" aria-live="polite">
+        {{ session('toast_error') }}
+    </div>
+    <script>
+        (function () {
+            const toast = document.getElementById('toast-error');
+            if (!toast) return;
+
+            requestAnimationFrame(function () {
+                toast.classList.add('show');
+            });
+
+            setTimeout(function () {
+                toast.classList.remove('show');
+            }, 4300);
+        })();
+    </script>
+@endif
 <main class="container">
     <section class="card">
         <h1>Verify a Raffle</h1>
@@ -90,9 +137,10 @@
         <form method="GET" action="{{ route('raffles.index') }}">
             <input
                 type="text"
-                name="raffle_id"
+                name="rafflee"
                 placeholder="raffle_001"
                 maxlength="100"
+                value="{{ request('rafflee', request('raffle_id', '')) }}"
                 required
             >
             <button type="submit">Open Raffle</button>

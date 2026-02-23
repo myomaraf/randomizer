@@ -164,6 +164,27 @@ class RandomizerApiTest extends TestCase
         $page->assertSee((string) $digest);
     }
 
+    public function test_rafflee_query_auto_redirects_and_shows_raffle(): void
+    {
+        $this
+            ->withHeaders(['X-API-KEY' => self::RAW_API_KEY])
+            ->postJson('/api/randomize', $this->payload('raffle-query-open'))
+            ->assertOk();
+
+        $page = $this->followingRedirects()->get('/raffles?rafflee=raffle-query-open');
+
+        $page->assertOk();
+        $page->assertSee('Raffle raffle-query-open');
+    }
+
+    public function test_missing_raffle_uses_toast_error_instead_of_404(): void
+    {
+        $page = $this->followingRedirects()->get('/raffles/raffle-does-not-exist');
+
+        $page->assertOk();
+        $page->assertSee("Raffle ID 'raffle-does-not-exist' does not exist.");
+    }
+
     public function test_large_array_within_limit_succeeds(): void
     {
         config()->set('omaraf.max_uuids', 6000);
