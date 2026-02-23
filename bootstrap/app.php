@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Middleware\EnsureAllowedOrigin;
+use App\Http\Middleware\RequireApiKey;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -14,7 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
-            'allowed.origin' => EnsureAllowedOrigin::class,
+            'require.api.key' => RequireApiKey::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

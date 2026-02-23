@@ -64,6 +64,14 @@
             color: var(--accent);
             font-weight: 600;
         }
+
+        .verify-link {
+            display: inline-block;
+            margin-top: 14px;
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 700;
+        }
     </style>
 </head>
 <body>
@@ -75,10 +83,11 @@
             using a transparent and auditable algorithm.
         </p>
         <p>
-            The API canonicalizes and sorts UUIDs, mixes a time bucket with a cryptographic nonce, and returns an
-            audit trail so each selection can be independently reviewed.
+            The API canonicalizes and sorts ticket UUIDs, mixes them with raffle_id and a cryptographic nonce, then
+            stores a complete audit trail so each selection can be independently reviewed.
         </p>
         <div class="endpoint">POST /api/randomize</div>
+        <a class="verify-link" href="/raffles">Verify a raffle</a>
     </section>
 </main>
 </body>

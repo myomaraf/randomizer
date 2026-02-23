@@ -1,12 +1,13 @@
 # Omaraf Randomizer
 
-Omaraf Randomizer is an open-source Laravel 11 API that accepts an array of UUIDs and returns exactly one selected UUID using a transparent, auditable selection algorithm.
+Omaraf Randomizer is an open-source Laravel 11 raffle randomizer API.
 
-The API is designed to be:
+The app:
 
-- easy to audit
-- deterministic after the request (using the published audit trail)
-- unpredictable before the request (using cryptographic per-request entropy)
+- accepts a `raffle_id` and an array of ticket UUIDs
+- selects exactly one winner UUID using a transparent algorithm
+- stores raffle audit data and canonical ticket list in the database
+- exposes public verification pages for any raffle
 
 ## Requirements
 
@@ -22,19 +23,20 @@ php artisan key:generate
 php artisan serve
 ```
 
-App homepage:
-
-- `GET /` - minimal product page
-
 ## API
 
 ### `POST /api/randomize`
+
+Requires header:
+
+- `X-API-KEY: <RAW_KEY>`
 
 Request body:
 
 ```json
 {
-  "uuids": [
+  "raffle_id": "raffle_001",
+  "ticket_uuids": [
     "550e8400-e29b-41d4-a716-446655440000",
     "550e8400-e29b-41d4-a716-446655440001"
   ]
@@ -47,9 +49,10 @@ Example `curl` request:
 curl -X POST "http://127.0.0.1:8000/api/randomize" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
-  -H "Origin: https://myomaraf.com" \
+  -H "X-API-KEY: RAW_KEY" \
   -d '{
-    "uuids": [
+    "raffle_id": "raffle_001",
+    "ticket_uuids": [
       "550e8400-e29b-41d4-a716-446655440000",
       "550e8400-e29b-41d4-a716-446655440001",
       "550e8400-e29b-41d4-a716-446655440002"
@@ -61,20 +64,20 @@ Example success response:
 
 ```json
 {
+  "raffle_id": "raffle_001",
   "selected_uuid": "550e8400-e29b-41d4-a716-446655440002",
   "meta": {
     "count": 3,
-    "algorithm": "sha256(sorted_uuid_list|timestamp_bucket_utc|server_nonce_hex) % count",
+    "algorithm": "Omaraf Randomizer v1",
     "audit": {
-      "uuids_sha256": "02d1b6...",
+      "raffle_id": "raffle_001",
+      "uuids_sha256": "9f2e...",
+      "nonce_hex": "37c5...",
+      "digest_sha256": "b2ed...",
+      "index_selected": 2,
       "count": 3,
-      "digest_sha256": "9cc8d3...",
-      "index": 2,
-      "timestamp_utc": "2026-02-23T18:01:25Z",
-      "timestamp_bucket_utc": "2026-02-23T18:01Z",
-      "server_nonce_sha256": "442c6a...",
-      "server_nonce_hex": "8b71...",
-      "algorithm_version": "v1"
+      "timestamp_utc": "2026-02-23T19:40:15Z",
+      "algorithm_version": "1"
     }
   }
 }
@@ -82,95 +85,90 @@ Example success response:
 
 ## Validation rules
 
-- `uuids` is required
-- `uuids` must be an array
-- `uuids` must contain at least one element
-- each entry must be a valid UUID v1-v5
-- max array size is configurable (`OMARAF_MAX_UUIDS`, default `20000`)
+- `raffle_id` required, string, max 100, unique
+- `ticket_uuids` required, array, min 1, max configurable
+- `ticket_uuids.*` valid UUID
+- duplicate `raffle_id` returns `409` with:
+  - `{ "message": "raffle_id already exists" }`
 
 Validation errors return HTTP `422` with a standard Laravel validation payload.
+
+## API keys
+
+`POST /api/randomize` uses DB-backed API keys.
+
+The raw key is never stored directly. The app stores:
+
+- `api_keys.key_hash = sha256(raw_key)`
+
+Create a key row manually (MySQL example):
+
+```sql
+INSERT INTO api_keys (name, key_hash, is_active, created_at, updated_at)
+VALUES ('Main', SHA2('RAW_KEY_HERE', 256), 1, NOW(), NOW());
+```
+
+Auth behavior:
+
+- missing `X-API-KEY` => `401` `{ "message": "API key missing" }`
+- invalid/inactive key => `401` `{ "message": "Invalid API key" }`
+
+## Persistence model
+
+Tables:
+
+- `api_keys`
+- `raffles`
+- `raffle_tickets`
+
+Each raffle stores:
+
+- `raffle_id`, winner UUID, digest/audit fields, algorithm version, timestamp
+
+Each ticket stores:
+
+- canonical UUID and sorted position for auditability
+
+## Public verification UI
+
+Routes:
+
+- `GET /raffles` - form to enter `raffle_id`
+- `GET /raffles/{raffle_id}` - public details page with:
+  - winner UUID
+  - audit fields
+  - formula + steps
+  - paginated ticket list (100/page)
+
+## Algorithm and audit
+
+Selection algorithm:
+
+1. Canonicalize `ticket_uuids` (`trim` + `lowercase`).
+2. Sort lexicographically.
+3. `nonce_hex = bin2hex(random_bytes(32))`.
+4. `digest_sha256 = sha256(joined_sorted_uuids + ":" + raffle_id + ":" + nonce_hex)`.
+5. Use first 16 hex chars as a 64-bit seed and compute `index_selected = seed % count`.
+6. Winner is `sorted_uuids[index_selected]`.
+
+To verify a raffle from `/raffles/{raffle_id}`:
+
+- rebuild canonical sorted ticket list from stored tickets
+- recompute `uuids_sha256`
+- recompute `digest_sha256` using stored `raffle_id` and `nonce_hex`
+- recompute `index_selected` from first 16 hex chars and compare with stored index/winner
 
 ## Configuration
 
 Environment variables:
 
-- `OMARAF_ALLOWED_ORIGINS=https://myomaraf.com,https://www.myomaraf.com`
 - `OMARAF_MAX_UUIDS=20000`
-- `OMARAF_RATE_LIMIT_PER_MINUTE=60`
-- `OMARAF_ALGORITHM_VERSION=v1`
+- `OMARAF_RATE_LIMIT=60`
+- `OMARAF_ALGORITHM_VERSION=1`
 
-Config file:
-
-- `config/omaraf.php`
-
-## Rate limiting
-
-The endpoint is rate-limited with Laravel `RateLimiter`:
-
-- default `60` requests per minute per IP
-- limiter key: `randomize`
-- applied to `POST /api/randomize` via middleware `throttle:randomize`
-
-## Origin restriction
-
-`POST /api/randomize` is protected by `EnsureAllowedOrigin` middleware.
-
-The middleware allows requests only when `Origin` or `Referer` resolves to one of the configured allowed origins. By default:
-
-- `https://myomaraf.com`
-- `https://www.myomaraf.com`
-
-Blocked requests receive HTTP `403`:
-
-```json
-{
-  "message": "Request origin is not allowed.",
-  "allowed_origins": [
-    "https://myomaraf.com",
-    "https://www.myomaraf.com"
-  ]
-}
-```
-
-### Security limitations of Origin/Referer checks
-
-- `Origin` and `Referer` are browser-oriented headers and should be treated as abuse reduction, not strong authentication.
-- Non-browser clients can spoof these headers.
-- Some privacy tools / proxies may remove or alter `Referer`.
-- For stronger guarantees, combine with API keys, signatures, IP controls, or gateway/WAF rules.
-
-## Algorithm and audit trail
-
-Algorithm steps:
-
-1. Canonicalize UUIDs (`trim`, `lowercase`).
-2. Sort UUIDs lexicographically to remove caller order influence.
-3. Compute digest input: `joined_sorted_uuids | timestamp_bucket_utc | server_nonce_hex`.
-4. Generate `digest_sha256 = SHA-256(digest_input)`.
-5. Compute `index = digest_sha256 mod count`.
-6. Select `selected_uuid = sorted_uuids[index]`.
-
-Audit fields explain the exact request selection context:
-
-- `uuids_sha256`: hash of the canonical sorted UUID list
-- `count`: number of UUIDs processed
-- `digest_sha256`: final digest used for selection
-- `index`: selected index in canonical sorted list
-- `timestamp_utc`: exact processing timestamp
-- `timestamp_bucket_utc`: bucket included in digest input
-- `server_nonce_sha256`: integrity hash of per-request nonce
-- `server_nonce_hex`: nonce value used in digest input
-- `algorithm_version`: configurable algorithm label
-
-Why sorting + hashing improves transparency:
-
-- Sorting removes order-based manipulation from callers.
-- Hashes let auditors verify the exact canonical input and output derivation without ambiguity.
-- Per-request cryptographic nonce keeps outcomes unpredictable before execution.
+The endpoint is rate-limited per IP using Laravel `RateLimiter`.
 
 ## Testing
-
-Run tests:
 
 ```bash
 php artisan test
@@ -178,11 +176,12 @@ php artisan test
 
 Feature tests included:
 
-- success case
-- invalid UUID returns `422`
-- missing `uuids` returns `422`
-- blocked origin returns `403`
-- large array within limit succeeds
+- missing API key => `401`
+- invalid API key => `401`
+- valid API key => `200` and DB persistence
+- duplicate `raffle_id` => `409`
+- public raffle page shows winner and audit
+- validation failures for invalid/missing ticket UUID inputs
 
 ## License
 

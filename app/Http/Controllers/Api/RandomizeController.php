@@ -11,7 +11,12 @@ class RandomizeController extends Controller
 {
     public function __invoke(RandomizeRequest $request, RandomizerService $randomizerService): JsonResponse
     {
-        $result = $randomizerService->pick($request->validated('uuids'));
+        $validated = $request->validated();
+
+        $result = $randomizerService->pick(
+            $validated['raffle_id'],
+            $validated['ticket_uuids']
+        );
 
         return response()->json($result);
     }

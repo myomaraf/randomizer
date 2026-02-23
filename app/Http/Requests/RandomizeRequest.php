@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Contracts\Validation\Validator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class RandomizeRequest extends FormRequest
 {
@@ -13,16 +15,16 @@ class RandomizeRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $uuids = $this->input('uuids');
+        $ticketUuids = $this->input('ticket_uuids');
 
-        if (! is_array($uuids)) {
+        if (! is_array($ticketUuids)) {
             return;
         }
 
         $this->merge([
-            'uuids' => array_map(
+            'ticket_uuids' => array_map(
                 static fn ($uuid) => is_string($uuid) ? trim($uuid) : $uuid,
-                $uuids
+                $ticketUuids
             ),
         ]);
     }
@@ -32,11 +34,12 @@ class RandomizeRequest extends FormRequest
         $maxUuids = max((int) config('omaraf.max_uuids', 20000), 1);
 
         return [
-            'uuids' => ['required', 'array', 'min:1', 'max:'.$maxUuids],
-            'uuids.*' => [
+            'raffle_id' => ['required', 'string', 'max:100', 'unique:raffles,raffle_id'],
+            'ticket_uuids' => ['required', 'array', 'min:1', 'max:'.$maxUuids],
+            'ticket_uuids.*' => [
                 'required',
                 'string',
-                'regex:/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/',
+                'uuid',
             ],
         ];
     }
@@ -46,13 +49,30 @@ class RandomizeRequest extends FormRequest
         $maxUuids = max((int) config('omaraf.max_uuids', 20000), 1);
 
         return [
-            'uuids.required' => 'The uuids field is required.',
-            'uuids.array' => 'The uuids field must be an array of UUID strings.',
-            'uuids.min' => 'The uuids field must contain at least one UUID.',
-            'uuids.max' => "The uuids field may not contain more than {$maxUuids} UUIDs.",
-            'uuids.*.required' => 'Each UUID value is required.',
-            'uuids.*.string' => 'Each UUID value must be a string.',
-            'uuids.*.regex' => 'Each element in uuids must be a valid UUID (versions 1-5).',
+            'raffle_id.required' => 'The raffle_id field is required.',
+            'raffle_id.string' => 'The raffle_id field must be a string.',
+            'raffle_id.max' => 'The raffle_id field may not be greater than 100 characters.',
+            'raffle_id.unique' => 'raffle_id already exists',
+            'ticket_uuids.required' => 'The ticket_uuids field is required.',
+            'ticket_uuids.array' => 'The ticket_uuids field must be an array of UUID strings.',
+            'ticket_uuids.min' => 'The ticket_uuids field must contain at least one UUID.',
+            'ticket_uuids.max' => "The ticket_uuids field may not contain more than {$maxUuids} UUIDs.",
+            'ticket_uuids.*.required' => 'Each ticket UUID value is required.',
+            'ticket_uuids.*.string' => 'Each ticket UUID value must be a string.',
+            'ticket_uuids.*.uuid' => 'Each element in ticket_uuids must be a valid UUID.',
         ];
+    }
+
+    protected function failedValidation(Validator $validator): void
+    {
+        $failed = $validator->failed();
+
+        if (isset($failed['raffle_id']['Unique'])) {
+            throw new HttpResponseException(response()->json([
+                'message' => 'raffle_id already exists',
+            ], 409));
+        }
+
+        parent::failedValidation($validator);
     }
 }

@@ -2,23 +2,23 @@
 
 namespace App\Services;
 
+use App\Models\Raffle;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
+use Illuminate\Support\Facades\DB;
 
 class RandomizerService
 {
-    public const ALGORITHM_NAME = 'sha256(sorted_uuid_list|timestamp_bucket_utc|server_nonce_hex) % count';
-
-    public function pick(array $uuids): array
+    public function pick(string $raffleId, array $ticketUuids): array
     {
-        $canonicalUuids = array_map(
+        $canonicalTicketUuids = array_map(
             static fn (string $uuid): string => strtolower(trim($uuid)),
-            $uuids
+            $ticketUuids
         );
 
-        sort($canonicalUuids, SORT_STRING);
+        sort($canonicalTicketUuids, SORT_STRING);
 
-        $count = count($canonicalUuids);
+        $count = count($canonicalTicketUuids);
 
         if ($count === 0) {
             throw new InvalidArgumentException('UUID list cannot be empty.');
@@ -26,50 +26,90 @@ class RandomizerService
 
         $timestamp = CarbonImmutable::now('UTC');
         $timestampUtc = $timestamp->format('Y-m-d\TH:i:s\Z');
-        $timestampBucketUtc = $timestamp->startOfMinute()->format('Y-m-d\TH:i\Z');
+        $algorithmVersion = (string) config('omaraf.algorithm_version', '1');
+        $algorithmName = 'Omaraf Randomizer v'.$algorithmVersion;
 
-        $joinedUuids = implode("\n", $canonicalUuids);
+        $joinedUuids = implode("\n", $canonicalTicketUuids);
         $uuidsSha256 = hash('sha256', $joinedUuids);
 
-        $serverNonce = random_bytes(32);
-        $serverNonceHex = bin2hex($serverNonce);
-        $serverNonceSha256 = hash('sha256', $serverNonce);
-
-        // Digest input is fully documented and reproducible for post-request audits.
-        $digestInput = $joinedUuids.'|'.$timestampBucketUtc.'|'.$serverNonceHex;
+        $nonceHex = bin2hex(random_bytes(32));
+        $digestInput = $joinedUuids.':'.$raffleId.':'.$nonceHex;
         $digestSha256 = hash('sha256', $digestInput);
+        $indexSelected = $this->indexFromDigest($digestSha256, $count);
+        $selectedUuid = $canonicalTicketUuids[$indexSelected];
 
-        $index = $this->hexDigestModulo($digestSha256, $count);
-        $selectedUuid = $canonicalUuids[$index];
+        $raffle = DB::transaction(function () use (
+            $raffleId,
+            $uuidsSha256,
+            $count,
+            $selectedUuid,
+            $algorithmVersion,
+            $digestSha256,
+            $indexSelected,
+            $nonceHex,
+            $timestamp,
+            $canonicalTicketUuids
+        ) {
+            $raffle = Raffle::query()->create([
+                'raffle_id' => $raffleId,
+                'uuids_sha256' => $uuidsSha256,
+                'count' => $count,
+                'selected_uuid' => $selectedUuid,
+                'algorithm_version' => $algorithmVersion,
+                'digest_sha256' => $digestSha256,
+                'index_selected' => $indexSelected,
+                'nonce_hex' => $nonceHex,
+                'timestamp_utc' => $timestamp,
+            ]);
+
+            $insertedAt = now();
+            $tickets = [];
+
+            foreach ($canonicalTicketUuids as $position => $uuid) {
+                $tickets[] = [
+                    'raffle_id' => $raffle->id,
+                    'uuid' => $uuid,
+                    'position' => $position,
+                    'created_at' => $insertedAt,
+                    'updated_at' => $insertedAt,
+                ];
+            }
+
+            $raffle->tickets()->insert($tickets);
+
+            return $raffle;
+        });
 
         return [
+            'raffle_id' => $raffle->raffle_id,
             'selected_uuid' => $selectedUuid,
             'meta' => [
                 'count' => $count,
-                'algorithm' => self::ALGORITHM_NAME,
+                'algorithm' => $algorithmName,
                 'audit' => [
+                    'raffle_id' => $raffleId,
                     'uuids_sha256' => $uuidsSha256,
-                    'count' => $count,
+                    'nonce_hex' => $nonceHex,
                     'digest_sha256' => $digestSha256,
-                    'index' => $index,
+                    'index_selected' => $indexSelected,
+                    'count' => $count,
                     'timestamp_utc' => $timestampUtc,
-                    'timestamp_bucket_utc' => $timestampBucketUtc,
-                    'server_nonce_sha256' => $serverNonceSha256,
-                    'server_nonce_hex' => $serverNonceHex,
-                    'algorithm_version' => (string) config('omaraf.algorithm_version', 'v1'),
+                    'algorithm_version' => $algorithmVersion,
                 ],
             ],
         ];
     }
 
-    private function hexDigestModulo(string $hexDigest, int $modulo): int
+    private function indexFromDigest(string $digestSha256, int $count): int
     {
-        $result = 0;
+        $seedHex = substr($digestSha256, 0, 16);
+        $high32 = hexdec(substr($seedHex, 0, 8));
+        $low32 = hexdec(substr($seedHex, 8, 8));
 
-        foreach (str_split($hexDigest) as $char) {
-            $result = (($result * 16) + hexdec($char)) % $modulo;
-        }
+        $base = 4294967296 % $count;
+        $highModulo = $high32 % $count;
+        $lowModulo = $low32 % $count;
 
-        return $result;
+        return (int) (($highModulo * $base + $lowModulo) % $count);
     }
 }

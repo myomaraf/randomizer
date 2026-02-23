@@ -23,7 +23,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         RateLimiter::for('randomize', function (Request $request) {
-            $maxPerMinute = max((int) config('omaraf.rate_limit_per_minute', 60), 1);
+            $maxPerMinute = max((int) config('omaraf.rate_limit', 60), 1);
 
             return Limit::perMinute($maxPerMinute)->by($request->ip() ?: 'unknown');
         });
