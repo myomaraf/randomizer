@@ -138,7 +138,10 @@ Routes:
   - winner UUID
   - audit fields
   - formula + steps
-  - paginated ticket list (100/page)
+  - DataTable-backed ticket list loaded via API (server-side pagination/search/sort)
+- `GET /raffles/{raffle_id}/tickets/data` - DataTables JSON endpoint for ticket rows
+- `GET /raffles/{raffle_id}/tickets/export.csv` - export all raffle tickets as CSV
+- `GET /raffles/{raffle_id}/tickets/export.xls` - export all raffle tickets as Excel (`.xls`)
 
 Lookup behavior:
 

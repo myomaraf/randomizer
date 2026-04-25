@@ -207,6 +207,62 @@ class RandomizerApiTest extends TestCase
         $response->assertJsonPath('meta.count', 5000);
     }
 
+    public function test_raffle_tickets_data_endpoint_returns_datatables_payload(): void
+    {
+        $this
+            ->withHeaders(['X-API-KEY' => self::RAW_API_KEY])
+            ->postJson('/api/randomize', $this->payload('raffle-tickets-data'))
+            ->assertOk();
+
+        $response = $this->get('/raffles/raffle-tickets-data/tickets/data?draw=1&start=0&length=2');
+
+        $response->assertOk();
+        $response->assertJsonPath('draw', 1);
+        $response->assertJsonPath('recordsTotal', 3);
+        $response->assertJsonPath('recordsFiltered', 3);
+        $response->assertJsonCount(2, 'data');
+        $response->assertJsonPath('data.0.position', 0);
+    }
+
+    public function test_raffle_tickets_export_csv_downloads_ticket_rows(): void
+    {
+        $this
+            ->withHeaders(['X-API-KEY' => self::RAW_API_KEY])
+            ->postJson('/api/randomize', $this->payload('raffle-export-csv'))
+            ->assertOk();
+
+        $response = $this->get('/raffles/raffle-export-csv/tickets/export.csv');
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
+
+        $csv = $response->streamedContent();
+
+        $this->assertStringContainsString("position,uuid\n", $csv);
+        $this->assertStringContainsString("0,550e8400-e29b-41d4-a716-446655440000\n", $csv);
+        $this->assertStringContainsString("1,550e8400-e29b-41d4-a716-446655440001\n", $csv);
+        $this->assertStringContainsString("2,550e8400-e29b-41d4-a716-446655440002\n", $csv);
+    }
+
+    public function test_raffle_tickets_export_excel_downloads_ticket_rows(): void
+    {
+        $this
+            ->withHeaders(['X-API-KEY' => self::RAW_API_KEY])
+            ->postJson('/api/randomize', $this->payload('raffle-export-excel'))
+            ->assertOk();
+
+        $response = $this->get('/raffles/raffle-export-excel/tickets/export.xls');
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/vnd.ms-excel; charset=UTF-8');
+
+        $excel = $response->streamedContent();
+
+        $this->assertStringContainsString('<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"', $excel);
+        $this->assertStringContainsString('<Data ss:Type="Number">0</Data>', $excel);
+        $this->assertStringContainsString('<Data ss:Type="String">550e8400-e29b-41d4-a716-446655440000</Data>', $excel);
+    }
+
     private function payload(string $raffleId): array
     {
         return [

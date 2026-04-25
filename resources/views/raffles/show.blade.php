@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Raffle {{ $raffle->raffle_id }} | Omaraf Randomizer</title>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
     <style>
         :root {
             --bg: #f8fafc;
@@ -117,6 +118,28 @@
             overflow-wrap: anywhere;
         }
 
+        .actions {
+            margin: 10px 0 14px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-block;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 7px 12px;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 0.92rem;
+        }
+
+        .btn:hover {
+            background: rgba(15, 118, 110, 0.07);
+        }
+
         .links {
             margin-top: 14px;
         }
@@ -131,6 +154,23 @@
             color: var(--accent);
             text-decoration: none;
             font-weight: 600;
+        }
+
+        .dataTables_wrapper .dataTables_filter input,
+        .dataTables_wrapper .dataTables_length select {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 4px 8px;
+            background: #fff;
+            color: var(--text);
+        }
+
+        .dataTables_wrapper .dataTables_info,
+        .dataTables_wrapper .dataTables_filter label,
+        .dataTables_wrapper .dataTables_length label,
+        .dataTables_wrapper .dataTables_paginate {
+            color: var(--muted);
+            font-size: 0.92rem;
         }
 
         @media (max-width: 760px) {
@@ -184,28 +224,52 @@
 
         <section class="card">
             <h2>Tickets</h2>
-            <p>Showing {{ $tickets->count() }} of {{ $tickets->total() }} tickets.</p>
-            <table>
+            <p>Total tickets: {{ $raffle->count }}. Loaded in chunks from API for performance.</p>
+            <div class="actions">
+                <a class="btn" href="{{ route('raffles.tickets.export.csv', ['raffle_id' => $raffle->raffle_id]) }}">
+                    Export Tickets CSV
+                </a>
+                <a class="btn" href="{{ route('raffles.tickets.export.xls', ['raffle_id' => $raffle->raffle_id]) }}">
+                    Export Tickets Excel
+                </a>
+            </div>
+            <table id="tickets-table">
                 <thead>
                 <tr>
                     <th>Position</th>
                     <th>UUID</th>
                 </tr>
                 </thead>
-                <tbody>
-                @foreach ($tickets as $ticket)
-                    <tr>
-                        <td>{{ $ticket->position }}</td>
-                        <td>{{ $ticket->uuid }}</td>
-                    </tr>
-                @endforeach
-                </tbody>
             </table>
-            <div class="links">
-                {{ $tickets->links() }}
-            </div>
         </section>
     </div>
 </main>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script>
+    $(function () {
+        $('#tickets-table').DataTable({
+            processing: true,
+            serverSide: true,
+            pageLength: 100,
+            lengthMenu: [
+                [25, 50, 100, 250, 500],
+                [25, 50, 100, 250, 500],
+            ],
+            ajax: '{{ route('raffles.tickets.data', ['raffle_id' => $raffle->raffle_id]) }}',
+            order: [[0, 'asc']],
+            columns: [
+                { data: 'position', name: 'position' },
+                { data: 'uuid', name: 'uuid' },
+            ],
+            language: {
+                search: 'Search UUID or position:',
+                lengthMenu: 'Show _MENU_ tickets',
+                info: 'Showing _START_ to _END_ of _TOTAL_ tickets',
+                infoFiltered: '(filtered from _MAX_ total)',
+            },
+        });
+    });
+</script>
 </body>
 </html>

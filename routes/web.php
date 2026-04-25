@@ -36,3 +36,6 @@ Route::middleware(['throttle:3,1'])->get('/run-migration', function (Request $re
 
 Route::get('/raffles', [RafflesController::class, 'index'])->name('raffles.index');
 Route::get('/raffles/{raffle_id}', [RafflesController::class, 'show'])->name('raffles.show');
+Route::get('/raffles/{raffle_id}/tickets/data', [RafflesController::class, 'ticketsData'])->name('raffles.tickets.data');
+Route::get('/raffles/{raffle_id}/tickets/export.csv', [RafflesController::class, 'exportTicketsCsv'])->name('raffles.tickets.export.csv');
+Route::get('/raffles/{raffle_id}/tickets/export.xls', [RafflesController::class, 'exportTicketsExcel'])->name('raffles.tickets.export.xls');
